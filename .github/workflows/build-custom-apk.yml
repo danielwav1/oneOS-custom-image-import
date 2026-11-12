@@ -12,7 +12,10 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
     steps:
       - name: Check out source
         uses: actions/checkout@v4
@@ -23,11 +26,13 @@ jobs:
           distribution: temurin
           java-version: '21'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install Android 37 platform
-        run: sdkmanager "platforms;android-37"
+      - name: Install Android SDK platform
+        run: |
+          test -x "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" || test -x "$ANDROID_HOME/cmdline-tools/16.0/bin/sdkmanager"
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDKMANAGER" ]; then SDKMANAGER="$ANDROID_HOME/cmdline-tools/16.0/bin/sdkmanager"; fi
+          yes | "$SDKMANAGER" --licenses >/dev/null
+          "$SDKMANAGER" --install "platforms;android-37" "platform-tools"
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -35,6 +40,9 @@ jobs:
       - name: Build and verify full debug APK
         working-directory: app-android
         run: ./gradlew --no-daemon --stacktrace assembleFullDebug
+
+      - name: Verify APK exists
+        run: test -s app-android/app/build/outputs/apk/full/debug/app-full-debug.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
