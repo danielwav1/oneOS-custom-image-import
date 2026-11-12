@@ -13,7 +13,6 @@ jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    env:
     steps:
       - name: Check out source
         uses: actions/checkout@v4
