@@ -32,7 +32,7 @@ jobs:
           SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
           if [ ! -x "$SDKMANAGER" ]; then SDKMANAGER="$ANDROID_HOME/cmdline-tools/16.0/bin/sdkmanager"; fi
           yes | "$SDKMANAGER" --licenses >/dev/null
-          "$SDKMANAGER" --install "platforms;android-37" "platform-tools"
+          "$SDKMANAGER" --channel=3 --install "platforms;android-37" "platform-tools"
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
