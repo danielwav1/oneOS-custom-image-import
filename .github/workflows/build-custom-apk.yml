@@ -34,6 +34,9 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      - name: Build and stage guest manager debug APK
+        run: ./scripts/build-guest-manager.sh --debug
+
       - name: Build and verify full debug APK
         working-directory: app-android
         run: ./gradlew --no-daemon --stacktrace assembleFullDebug
