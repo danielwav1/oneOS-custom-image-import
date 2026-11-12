@@ -36,6 +36,10 @@ WeWaffles, and builds its guest images with
 > a phone you can afford to reset. Nothing here is supported by Samsung,
 > Google or OPPO.
 
+## Custom ROM imports
+
+The app can catalogue custom ROM files, but an imported file is not automatically compatible or bootable. See [Custom ROM import and compatibility](docs/custom-rom-import.md) for the current limits and Android 17 target.
+
 ## Status
 
 App version 0.4.93. Galaxy Z Fold, S, Z Flip, A, F and M phones with Snapdragon,

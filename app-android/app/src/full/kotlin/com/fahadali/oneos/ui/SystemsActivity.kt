@@ -651,7 +651,7 @@ class SystemsFragment : Fragment() {
     ): View {
         val ctx = parent.context
         val inflater = LayoutInflater.from(ctx)
-        val v = inflater.inflate(R.layout.systems_card, parent, false)
+        val v = inflater.inflate(R.layout.systems_card, parent, false) as ViewGroup
         val image = entry.image
         v.contentDescription = entry.name
         v.isScreenReaderFocusable = true
