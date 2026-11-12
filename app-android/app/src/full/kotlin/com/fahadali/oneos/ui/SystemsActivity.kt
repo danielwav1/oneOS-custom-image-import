@@ -11,6 +11,7 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
+import android.widget.EditText
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -35,6 +36,7 @@ import com.fahadali.oneos.core.model.Plain
 import com.fahadali.oneos.core.model.Profiles
 import com.fahadali.oneos.core.model.Units
 import com.fahadali.oneos.core.root.RootProbe
+import com.fahadali.oneos.session.CustomRomCatalog
 import com.fahadali.oneos.session.LaunchJob
 import com.fahadali.oneos.session.LogJob
 import com.fahadali.oneos.session.OldStagesJob
@@ -56,12 +58,14 @@ open class SystemsActivity : ToolbarActivity() {
     override fun createFragment(): Fragment = SystemsFragment()
 
     private lateinit var pick: ActivityResultLauncher<Unit>
+    private lateinit var pickCustom: ActivityResultLauncher<Unit>
 
     /** The system whose "I have the file" opened the picker (kept across recreation). */
     private var pickFor: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         pick = registerForActivityResult(SystemsNav.OpenGz()) { uri -> if (uri != null) picked(uri) }
+        pickCustom = registerForActivityResult(SystemsNav.OpenCustomRom()) { uri -> if (uri != null) pickedCustom(uri) }
         pickFor = savedInstanceState?.getString(KEY_PICK_FOR)
         super.onCreate(savedInstanceState)
         ArtworkTransitions.prepare(this)
@@ -104,6 +108,29 @@ open class SystemsActivity : ToolbarActivity() {
         } catch (_: ActivityNotFoundException) {
             Toast.makeText(this, R.string.fix_no_app, Toast.LENGTH_LONG).show()
         }
+    }
+
+    fun chooseCustom() {
+        try {
+            pickCustom.launch(Unit)
+        } catch (_: ActivityNotFoundException) {
+            Toast.makeText(this, R.string.fix_no_app, Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun pickedCustom(uri: Uri) {
+        runCatching { contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+        var name: String? = null
+        var size: Long? = null
+        runCatching {
+            contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE), null, null, null)?.use { c ->
+                if (c.moveToFirst()) {
+                    name = c.getString(0)
+                    size = if (c.isNull(1)) null else c.getLong(1)
+                }
+            }
+        }
+        (supportFragmentManager.findFragmentById(R.id.fragment_container) as? SystemsFragment)?.importCustom(uri, name, size)
     }
 
     /** The same as the OS image page: a persistable read grant, the name and size, the source = this file. */
@@ -150,6 +177,22 @@ internal object SystemsNav {
         } catch (_: SecurityException) {
             Toast.makeText(a, R.string.fix_no_app, Toast.LENGTH_LONG).show()
         }
+    }
+
+    class OpenCustomRom : ActivityResultContract<Unit, Uri?>() {
+        override fun createIntent(context: Context, input: Unit): Intent =
+            Intent(Intent.ACTION_OPEN_DOCUMENT)
+                .addCategory(Intent.CATEGORY_OPENABLE)
+                .setType("*/*")
+                .putExtra(Intent.EXTRA_MIME_TYPES, arrayOf(
+                    "application/zip",
+                    "application/octet-stream",
+                    "application/gzip",
+                    "application/x-gzip",
+                    "*/*",
+                ))
+
+        override fun parseResult(resultCode: Int, intent: Intent?): Uri? = if (resultCode == Activity.RESULT_OK) intent?.data else null
     }
 
     /** ACTION_OPEN_DOCUMENT for the .img.gz (any type: providers label .gz differently), as the OS image page. */
@@ -297,6 +340,45 @@ class SystemsFragment : Fragment() {
         super.onDestroy()
     }
 
+    fun importCustom(uri: Uri, fileName: String?, bytes: Long?) {
+        val ctx = context ?: return
+        val suggested = fileName?.substringAfterLast('/')?.substringBeforeLast('.')?.takeIf { it.isNotBlank() }
+            ?: getString(R.string.custom_rom_default_name)
+        val name = EditText(ctx).apply {
+            setSingleLine(true)
+            setText(suggested)
+            setSelection(text.length)
+        }
+        AlertDialog.Builder(ctx)
+            .setTitle(R.string.custom_rom_import_title)
+            .setMessage(R.string.custom_rom_import_warning)
+            .setView(name)
+            .setPositiveButton(R.string.custom_rom_import_add) { _, _ ->
+                val label = name.text.toString().trim().ifBlank { suggested }
+                CustomRomCatalog.add(ctx, uri, label, fileName, bytes)
+                lastKey = null
+                redraw(force = true)
+                Toast.makeText(ctx, R.string.custom_rom_imported, Toast.LENGTH_LONG).show()
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    private fun showCustomRom(entry: CustomRomCatalog.Entry) {
+        val ctx = context ?: return
+        val size = entry.bytes?.let(Units::bytes) ?: getString(R.string.image_size_unknown)
+        AlertDialog.Builder(ctx)
+            .setTitle(entry.name)
+            .setMessage(getString(R.string.custom_rom_details, entry.fileName ?: entry.name, size))
+            .setPositiveButton(android.R.string.ok, null)
+            .setNegativeButton(R.string.custom_rom_remove) { _, _ ->
+                CustomRomCatalog.remove(ctx, entry.id)
+                lastKey = null
+                redraw(force = true)
+            }
+            .show()
+    }
+
     /** After the file picker: a good pick goes back to Home (nothing set up) or shows "Set up {system}" here; a bad one says why. */
     fun afterPick(cardId: String?) {
         val ctx = context ?: return
@@ -419,11 +501,12 @@ class SystemsFragment : Fragment() {
         val check = StageCheck.state
         val prep = PrepareJob.state
         val picked = SessionPrefs.picked(ctx)
+        val customRoms = CustomRomCatalog.all(ctx)
         val jobsBusy = prep.busy || LaunchJob.state.busy || LogJob.state.busy || OldStagesJob.state.busy || com.fahadali.oneos.session.RemoveJob.state.busy
         // PrepareJob reports every few MB: redraw only when something on the cards changes.
         val key = listOf(
             p?.id, profileRead, check.busy, check.result?.at, prep.phase, prep.image?.id,
-            picked?.uri, picked?.sha256, jobsBusy, resources.configuration.screenWidthDp,
+            picked?.uri, picked?.sha256, customRoms.map { it.id to it.name }, jobsBusy, resources.configuration.screenWidthDp,
         )
         if (key == lastKey && root.findViewById<androidx.recyclerview.widget.RecyclerView>(R.id.systems_carousel).adapter != null) return
         lastKey = key
@@ -461,7 +544,8 @@ class SystemsFragment : Fragment() {
             CatalogEntry(color.name, color, R.drawable.os_coloros, available.any { it.id == color.id }),
             CatalogEntry(nothing.name, nothing, R.drawable.os_nothing, available.any { it.id == nothing.id }),
             CatalogEntry(pixel.name, pixel, R.drawable.os_pixel, available.any { it.id == pixel.id }),
-        )
+        ) + customRoms.map { CatalogEntry(it.name, null, 0, false, customRom = it) } +
+            CatalogEntry(getString(R.string.custom_rom_card_name), null, 0, false, customPicker = true)
 
 
         currentEntries = entries
@@ -541,7 +625,14 @@ class SystemsFragment : Fragment() {
         }
     }
 
-    private data class CatalogEntry(val name: String, val image: ImageRef?, val art: Int, val supported: Boolean)
+    private data class CatalogEntry(
+        val name: String,
+        val image: ImageRef?,
+        val art: Int,
+        val supported: Boolean,
+        val customPicker: Boolean = false,
+        val customRom: CustomRomCatalog.Entry? = null,
+    )
 
     private class CarouselHolder(val box: android.widget.FrameLayout) : androidx.recyclerview.widget.RecyclerView.ViewHolder(box)
 
@@ -564,15 +655,47 @@ class SystemsFragment : Fragment() {
         val image = entry.image
         v.contentDescription = entry.name
         v.isScreenReaderFocusable = true
-        v.findViewById<OsArtworkView>(R.id.systems_artwork).apply {
+        val artwork = v.findViewById<OsArtworkView>(R.id.systems_artwork)
+        artwork.apply {
             if (entry.art != 0) bindArtwork(entry.art) else bind(image)
         }
         val badge = v.findViewById<TextView>(R.id.systems_badge)
         badge.text = getString(when {
+            entry.customPicker -> R.string.custom_rom_badge
+            entry.customRom != null -> R.string.custom_rom_pending_badge
             !entry.supported -> R.string.catalog_unsupported
             p?.choice(image?.id.orEmpty())?.tested == true -> R.string.catalog_optimised
             else -> R.string.catalog_experimental
         })
+        if (entry.customPicker || entry.customRom != null) {
+            artwork.visibility = View.GONE
+            v.setBackgroundColor(android.graphics.Color.rgb(105, 105, 105))
+            val label = TextView(ctx).apply {
+                text = if (entry.customPicker) getString(R.string.custom_rom_card_label)
+                    else entry.customRom?.name.orEmpty()
+                textSize = if (entry.customPicker) 34f else 25f
+                setTextColor(android.graphics.Color.WHITE)
+                gravity = android.view.Gravity.CENTER
+                setPadding(dp(20), dp(20), dp(20), dp(20))
+                isSingleLine = false
+            }
+            v.addView(label, android.widget.FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT,
+            ))
+            v.findViewById<View>(R.id.systems_more).visibility = View.GONE
+            val primary = v.findViewById<Button>(R.id.systems_primary)
+            primary.text = getString(if (entry.customPicker) R.string.custom_rom_import_button else R.string.custom_rom_details_button)
+            primary.setOnClickListener {
+                if (entry.customPicker) (activity as? SystemsActivity)?.chooseCustom()
+                else entry.customRom?.let(::showCustomRom)
+            }
+            v.setOnClickListener {
+                if (entry.customPicker) (activity as? SystemsActivity)?.chooseCustom()
+                else entry.customRom?.let(::showCustomRom)
+            }
+            return v
+        }
         badge.setCompoundDrawablesRelativeWithIntrinsicBounds(R.drawable.ic_catalog_device, 0, 0, 0)
         badge.compoundDrawablePadding = dp(8)
         // Not for this phone (0.4.43, UX audit): an Unsupported card used to run the whole setup flow and send

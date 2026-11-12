@@ -127,4 +127,18 @@
     <string name="fix_no_app">No app found to open this</string>
     <!-- 0.4.43 (UX audit): the pre-boot button when a check stops the switch and has nothing to tap. -->
     <string name="environment_what_stops">What stops the switch</string>
+
+    <string name="custom_rom_card_name">Custom</string>
+    <string name="custom_rom_card_label">＋\nCustom</string>
+    <string name="custom_rom_badge">CUSTOM ROM</string>
+    <string name="custom_rom_pending_badge">NOT VALIDATED</string>
+    <string name="custom_rom_import_button">Import ROM</string>
+    <string name="custom_rom_details_button">Details</string>
+    <string name="custom_rom_import_title">Import a custom ROM</string>
+    <string name="custom_rom_import_warning">This only adds the file to your OneOS catalogue. It does not make the ROM compatible or install it. Android 17 alone is not enough: the image, partitions, kernel, vendor components and device profile must all match. Custom ROM setup remains disabled until OneOS has a verified integration for it.</string>
+    <string name="custom_rom_import_add">Add to catalogue</string>
+    <string name="custom_rom_imported">Added to the custom ROM catalogue. Compatibility is not verified.</string>
+    <string name="custom_rom_default_name">Custom Android ROM</string>
+    <string name="custom_rom_details">%1$s\n%2$s\n\nThis ROM is stored as a catalogue entry only. Compatibility has not been checked and setup is unavailable.</string>
+    <string name="custom_rom_remove">Remove</string>
 </resources>
