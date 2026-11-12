@@ -8,6 +8,11 @@ on:
 
 permissions:
   contents: read
+  packages: read
+
+env:
+  GH_PACKAGES_USER: ${{ github.actor }}
+  GH_PACKAGES_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
 jobs:
   build:
